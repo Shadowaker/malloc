@@ -1,0 +1,17 @@
+# binaries
+*.o
+*.a
+*.so
+*.so.*
+libft_malloc_*.so
+libft_malloc.so
+
+# Test binary
+tests/test
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vi/
+
