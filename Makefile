@@ -18,37 +18,56 @@ SRCS	= srcs/malloc.c \
 
 OBJS_DIR	= objs
 OBJS		= $(patsubst srcs/%.c,$(OBJS_DIR)/%.o,$(SRCS))
+TOTAL		= $(words $(OBJS))
+BAR_WIDTH	= 30
 
 LIBFT_DIR	= libft
 LIBFT		= $(LIBFT_DIR)/libft.a
 
 TESTS_DIR	= tests
 
+GREEN	= \033[32m
+RED		= \033[31m
+RESET	= \033[0m
+BOLD	= \033[1m
+
 all: $(NAME) $(LINK)
+	@printf "\n$(GREEN)$(BOLD)Build successful: $(NAME)$(RESET)\n"
 
 $(OBJS_DIR)/%.o: srcs/%.c | $(OBJS_DIR)
-	$(CC) $(CFLAGS) $(INC) -c $< -o $@
+	@if ! OUTPUT=$$($(CC) $(CFLAGS) $(INC) -c $< -o $@ 2>&1); then \
+		printf "\n$(RED)$$OUTPUT$(RESET)\n" >&2; exit 1; \
+	fi
+	@COUNT=$$(ls $(OBJS_DIR)/*.o 2>/dev/null | wc -l | tr -d ' '); \
+	 FILLED=$$(($$COUNT * $(BAR_WIDTH) / $(TOTAL))); \
+	 EMPTY=$$(($(BAR_WIDTH) - $$FILLED)); \
+	 BAR=$$(printf '%*s' $$FILLED '' | tr ' ' '█'); \
+	 EMP=$$(printf '%*s' $$EMPTY '' | tr ' ' '░'); \
+	 printf "\r  Building [$(GREEN)%s$(RESET)%s] %d/%d" "$$BAR" "$$EMP" "$$COUNT" "$(TOTAL)"
 
 $(OBJS_DIR):
-	mkdir -p $(OBJS_DIR)
+	@mkdir -p $(OBJS_DIR)
 
 $(NAME): $(OBJS) $(LIBFT)
-	$(CC) -shared -o $@ $(OBJS) $(LIBFT)
+	@$(CC) -shared -o $@ $(OBJS) $(LIBFT)
 
 $(LINK): $(NAME)
-	ln -sf $(NAME) $(LINK)
+	@ln -sf $(NAME) $(LINK)
 
 $(LIBFT):
-	$(MAKE) -C $(LIBFT_DIR) CFLAGS="-Wall -Wextra -Werror -fPIC"
+	@if ! OUTPUT=$$($(MAKE) -s --no-print-directory -C $(LIBFT_DIR) CFLAGS="-Wall -Wextra -Werror -fPIC" 2>&1); then \
+		printf "$(RED)$$OUTPUT$(RESET)\n" >&2; exit 1; \
+	fi
 
 clean:
-	rm -rf $(OBJS_DIR)
-	$(MAKE) -C $(LIBFT_DIR) clean
+	@rm -rf $(OBJS_DIR)
+	@$(MAKE) -s --no-print-directory -C $(LIBFT_DIR) clean
 
 fclean: clean
-	rm -f $(NAME) $(LINK)
-	$(MAKE) -C $(LIBFT_DIR) fclean
-	@($(MAKE) -C $(TESTS_DIR) clean) &> /dev/null
+	@rm -f $(NAME) $(LINK)
+	@$(MAKE) -s --no-print-directory -C $(LIBFT_DIR) fclean
+	@$(MAKE) -s --no-print-directory -C $(TESTS_DIR) clean >/dev/null 2>&1; true
+	@printf "$(GREEN)$(BOLD)Full clean successful$(RESET)\n"
 
 re: fclean all
 
