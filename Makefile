@@ -15,7 +15,9 @@ SRCS	= srcs/malloc.c \
 		  srcs/show_alloc_mem.c \
 		  srcs/zone.c \
 		  srcs/utils.c
-OBJS	= $(SRCS:.c=.o)
+
+OBJS_DIR	= objs
+OBJS		= $(patsubst srcs/%.c,$(OBJS_DIR)/%.o,$(SRCS))
 
 LIBFT_DIR	= libft
 LIBFT		= $(LIBFT_DIR)/libft.a
@@ -24,8 +26,11 @@ TESTS_DIR	= tests
 
 all: $(NAME) $(LINK)
 
-%.o: %.c
+$(OBJS_DIR)/%.o: srcs/%.c | $(OBJS_DIR)
 	$(CC) $(CFLAGS) $(INC) -c $< -o $@
+
+$(OBJS_DIR):
+	mkdir -p $(OBJS_DIR)
 
 $(NAME): $(OBJS) $(LIBFT)
 	$(CC) -shared -o $@ $(OBJS) $(LIBFT)
@@ -37,7 +42,7 @@ $(LIBFT):
 	$(MAKE) -C $(LIBFT_DIR) CFLAGS="-Wall -Wextra -Werror -fPIC"
 
 clean:
-	rm -f $(OBJS)
+	rm -rf $(OBJS_DIR)
 	$(MAKE) -C $(LIBFT_DIR) clean
 
 fclean: clean
