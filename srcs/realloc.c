@@ -1,6 +1,33 @@
 #include "malloc.h"
 #include "libft.h"
 
+static void	shrink_inplace(t_block *block, size_t old_size, size_t aligned, t_zone *zone)
+{
+	t_block	*tail;
+	size_t	remainder;
+
+	remainder = old_size - aligned;
+	if (remainder <= sizeof(t_block) + 16)
+		return ;
+	tail = (t_block *)((char *)(block + 1) + aligned);
+	tail->size = remainder - sizeof(t_block);
+	tail->free = 1;
+	tail->prev = block;
+	tail->next = block->next;
+	if (tail->next)
+		tail->next->prev = tail;
+	block->next = tail;
+	block->size = aligned;
+	zone->free += remainder;
+	if (tail->next && tail->next->free)
+	{
+		tail->size += sizeof(t_block) + tail->next->size;
+		tail->next = tail->next->next;
+		if (tail->next)
+			tail->next->prev = tail;
+	}
+}
+
 static int	try_grow_inplace(t_block *block, size_t old_size, size_t aligned, t_zone *zone)
 {
 	size_t	next_total;
@@ -67,25 +94,28 @@ void	*realloc(void *ptr, size_t size)
 
 	if (aligned < old_size)
 	{
-
 		if ((old_size <= TINY_MAX && aligned <= TINY_MAX)
 			|| (old_size <= SMALL_MAX && aligned <= SMALL_MAX))
+		{
+			zone = find_zone(ptr, &list);
+			if (zone && list != &g_heap.large)
+				shrink_inplace(block, old_size, aligned, zone);
 			return (ptr);
+		}
 	}
 
 	if (aligned > old_size && aligned <= SMALL_MAX)
 	{
 		zone = find_zone(ptr, &list);
-
 		if (zone && list != &g_heap.large
 			&& try_grow_inplace(block, old_size, aligned, zone))
 			return (ptr);
 	}
 
 	new_ptr = malloc(size);
-
 	if (!new_ptr)
 		return (NULL);
+
 
 	ft_memcpy(new_ptr, ptr, old_size < aligned ? old_size : aligned);
 	free(ptr);

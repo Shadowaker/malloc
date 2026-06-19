@@ -51,6 +51,7 @@ void	*realloc(void *ptr, size_t size);
 
 // show_alloc.c
 void	show_alloc_mem(void);
+void	show_alloc_mem_ex(void);
 
 
 /*
@@ -68,5 +69,6 @@ size_t	get_page_size(void);
 size_t	get_zone_size(size_t max_block_size);
 void	write_hex(unsigned long n);
 void	write_size(size_t n);
+void	write_hex_dump(void *ptr, size_t size);
 
 #endif
