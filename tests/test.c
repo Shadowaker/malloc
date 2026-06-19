@@ -430,9 +430,9 @@ int main(void)
     test_stress_interleaved();
     test_show_alloc_mem();
 
-    printf("\n==========================================\n");
-    printf("  Results: %d passed, %d failed\n", g_pass, g_fail);
-    printf("==========================================\n");
+    printf("\n\r  ==========================================\n");
+    printf("\r    Results: %d passed, %d failed\n", g_pass, g_fail);
+    printf("\r  ==========================================\n");
 
     return (g_fail > 0 ? 1 : 0);
 }

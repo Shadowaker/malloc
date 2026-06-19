@@ -31,8 +31,11 @@ RED		= \033[31m
 RESET	= \033[0m
 BOLD	= \033[1m
 
-all: $(NAME) $(LINK)
+all: _welcome | $(NAME) $(LINK)
 	@printf "\n$(GREEN)$(BOLD)Build successful: $(NAME)$(RESET)\n"
+
+_welcome:
+	@printf "$(BOLD)Welcome to malloc$(RESET)\n\n"
 
 $(OBJS_DIR)/%.o: srcs/%.c | $(OBJS_DIR)
 	@if ! OUTPUT=$$($(CC) $(CFLAGS) $(INC) -c $< -o $@ 2>&1); then \
@@ -53,6 +56,12 @@ $(NAME): $(OBJS) $(LIBFT)
 
 $(LINK): $(NAME)
 	@ln -sf $(NAME) $(LINK)
+	@$(MAKE) -s --no-print-directory -C $(TESTS_DIR)
+	@printf "\n\n\r  Running tests...\n"
+	@cd $(TESTS_DIR) && OUTPUT=$$(./test_malloc 2>&1); STATUS=$$?; \
+	 printf "\r  %s\n" "$$OUTPUT" | tail -3; \
+	 [ $$STATUS -eq 0 ] || printf "$(RED)$(BOLD)Warning: tests failed$(RESET)\n"
+	@printf "\n"
 
 $(LIBFT):
 	@if ! OUTPUT=$$($(MAKE) -s --no-print-directory -C $(LIBFT_DIR) CFLAGS="-Wall -Wextra -Werror -fPIC" 2>&1); then \
