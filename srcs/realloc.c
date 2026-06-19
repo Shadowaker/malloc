@@ -116,7 +116,6 @@ void	*realloc(void *ptr, size_t size)
 	if (!new_ptr)
 		return (NULL);
 
-
 	ft_memcpy(new_ptr, ptr, old_size < aligned ? old_size : aligned);
 	free(ptr);
 	return (new_ptr);

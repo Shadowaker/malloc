@@ -55,6 +55,7 @@ static size_t	print_zone_list_ex(t_zone *zone, char *label, int label_len)
 		write_hex((unsigned long)zone);
 		write(1, "\n", 1);
 		block = (t_block *)(zone + 1);
+
 		while (block)
 		{
 			start = (void *)(block + 1);
@@ -64,6 +65,7 @@ static size_t	print_zone_list_ex(t_zone *zone, char *label, int label_len)
 			write_hex((unsigned long)end);
 			write(1, " : ", 3);
 			write_size(block->size);
+
 			if (block->free)
 				write(1, " bytes (free)\n", 14);
 			else
@@ -72,6 +74,7 @@ static size_t	print_zone_list_ex(t_zone *zone, char *label, int label_len)
 				write_hex_dump(start, block->size);
 				total += block->size;
 			}
+
 			block = block->next;
 		}
 		zone = zone->next;

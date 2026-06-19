@@ -412,6 +412,200 @@ static void test_show_alloc_mem(void)
     ASSERT("show_alloc_mem does not crash", 1);
 }
 
+/* ── coalesce ────────────────────────────────────────────────────────────── */
+
+/*
+** Coalescing is verified by engineering merged blocks of a precise size so that
+** a subsequent malloc returns exactly the original address (no split, first-fit).
+**
+** Merged size formula: size_A + sizeof(t_block) + size_B
+** split_block skips when: merged_size <= aligned + sizeof(t_block) + 16
+** → choosing aligned = merged_size - sizeof(t_block) - 16 gives a tight equality,
+**   preventing any split and making the returned pointer deterministic.
+**
+** A(32) + B(48): merged = 32 + 32 + 48 = 112. malloc(64): 112 == 64 + 32 + 16 → no split.
+** A(32) + B(48) + C(32): merged = 32+32+48+32+32 = 176. malloc(128): 176 == 128+48 → no split.
+*/
+static void test_coalesce(void)
+{
+    char    *a, *b, *c, *d, *guard;
+    int     ok, i;
+
+    SECTION("coalesce: adjacent free blocks are merged");
+
+    /* backward merge: free a then b — b's prev (a) is free → a absorbs b */
+    a = malloc(32); b = malloc(48); guard = malloc(16);
+    free(a);
+    free(b);
+    c = malloc(64); /* merged size 112 == 64+48 → no split; first-fit gives us a */
+    ASSERT("backward-merge: malloc from merged block returns original ptr",
+           (void *)c == (void *)a);
+    free(c);
+    free(guard);
+
+    /* forward merge: free b then a — a's next (b) is free → a absorbs b */
+    a = malloc(32); b = malloc(48); guard = malloc(16);
+    free(b);
+    free(a);
+    c = malloc(64); /* same merged size and result */
+    ASSERT("forward-merge: malloc from merged block returns original ptr",
+           (void *)c == (void *)a);
+    free(c);
+    free(guard);
+
+    /* triple merge: free a and c, then free b — b merges forward with c,
+       then backward with a; result is one block spanning all three */
+    a = malloc(32); b = malloc(48); c = malloc(32); guard = malloc(16);
+    free(a);
+    free(c);
+    free(b); /* forward: B+C → 48+32+32=112; backward: A+(B+C) → 32+32+112=176 */
+    d = malloc(128); /* 176 == 128+48 → no split; returns a */
+    ASSERT("triple-merge: all three blocks merge, ptr == original a",
+           (void *)d == (void *)a);
+    free(d);
+    free(guard);
+
+    /* coalesced region is writable */
+    a = malloc(64); b = malloc(64); guard = malloc(16);
+    free(a);
+    free(b);
+    c = malloc(100);
+    ASSERT("coalesced block is non-NULL", c != NULL);
+    memset(c, 0xCC, 100);
+    ok = 1;
+    for (i = 0; i < 100; i++)
+        if ((unsigned char)c[i] != 0xCC) { ok = 0; break; }
+    ASSERT("coalesced block is fully writable", ok);
+    free(c);
+    free(guard);
+}
+
+/* ── realloc: in-place shrink ────────────────────────────────────────────── */
+
+static void test_realloc_inplace_shrink(void)
+{
+    char    *a, *q, *tail;
+    int     ok, i;
+
+    SECTION("realloc: in-place shrink");
+
+    /* shrink returns same pointer and preserves data */
+    a = malloc(128);
+    memset(a, 0x42, 128);
+    q = realloc(a, 16);
+    ASSERT("shrink TINY 128→16: same pointer returned", (void *)q == (void *)a);
+    ok = 1;
+    for (i = 0; i < 16; i++)
+        if ((unsigned char)q[i] != 0x42) { ok = 0; break; }
+    ASSERT("shrink TINY 128→16: kept bytes preserved", ok);
+    free(q);
+
+    /* freed tail becomes available for a subsequent malloc
+       tail block header at a+16, user data at a+16+sizeof(t_block) = a+48 */
+    a = malloc(128);
+    q = realloc(a, 16);
+    tail = malloc(64);
+    ASSERT("shrink: freed tail is reusable (non-NULL)", tail != NULL);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wuse-after-free"
+    ASSERT("shrink: tail allocation is at the expected offset from original ptr",
+           (char *)tail == (char *)a + 16 + (int)sizeof(t_block));
+#pragma GCC diagnostic pop
+    free(q);
+    free(tail);
+
+    /* remainder too small to split: same pointer, no tail block created */
+    a = malloc(64);
+    q = realloc(a, 48);
+    /* remainder = 64-48 = 16; threshold = 32+16 = 48; 16 <= 48 → no split */
+    ASSERT("shrink: remainder too small to split → same pointer, no crash", (void *)q == (void *)a);
+    free(q);
+
+    /* shrink SMALL, data preserved */
+    a = malloc(512);
+    memset(a, 0x77, 512);
+    q = realloc(a, 128);
+    ASSERT("shrink SMALL 512→128: same pointer returned", (void *)q == (void *)a);
+    ok = 1;
+    for (i = 0; i < 128; i++)
+        if ((unsigned char)q[i] != 0x77) { ok = 0; break; }
+    ASSERT("shrink SMALL 512→128: kept bytes preserved", ok);
+    free(q);
+}
+
+/* ── realloc: in-place grow ──────────────────────────────────────────────── */
+
+static void test_realloc_inplace_grow(void)
+{
+    char    *a, *b, *q, *guard;
+    int     ok, i;
+
+    SECTION("realloc: in-place grow");
+
+    /* grow within TINY when next block is free */
+    a     = malloc(32);
+    b     = malloc(64);
+    guard = malloc(16);
+    memset(a, 0x99, 32);
+    free(b);
+    q = realloc(a, 64);
+    /* next_total=32+64=96; combined=32+96=128; remainder=128-64=64 > 48 → split */
+    ASSERT("grow TINY in-place: same pointer returned", (void *)q == (void *)a);
+    ok = 1;
+    for (i = 0; i < 32; i++)
+        if ((unsigned char)q[i] != 0x99) { ok = 0; break; }
+    ASSERT("grow TINY in-place: original data preserved", ok);
+    memset(q + 32, 0xAA, 32);
+    ok = 1;
+    for (i = 32; i < 64; i++)
+        if ((unsigned char)q[i] != 0xAA) { ok = 0; break; }
+    ASSERT("grow TINY in-place: extended region is writable", ok);
+    free(q);
+    free(guard);
+
+    /* grow when next block is occupied: fallback to malloc+copy */
+    a = malloc(32);
+    b = malloc(64); /* b stays allocated → can't grow in-place */
+    memset(a, 0xBB, 32);
+    q = realloc(a, 64);
+    ASSERT("grow with occupied next: result is non-NULL", q != NULL);
+    ok = 1;
+    for (i = 0; i < 32; i++)
+        if ((unsigned char)q[i] != 0xBB) { ok = 0; break; }
+    ASSERT("grow with occupied next: data preserved via copy", ok);
+    free(q);
+    free(b);
+}
+
+/* ── show_alloc_mem_ex ───────────────────────────────────────────────────── */
+
+static void test_show_alloc_mem_ex(void)
+{
+    void    *a, *b, *c;
+
+    SECTION("show_alloc_mem_ex: all blocks shown with hex dump (inspect output)");
+
+    a = malloc(24);
+    b = malloc(300);
+    c = malloc(8000);
+    memset(a, 'A', 24);
+    memset(b, 'B', 300);
+    memset(c, 'C', 8000);
+    printf("  [INFO] 3 live allocations (TINY/SMALL/LARGE):\n");
+    show_alloc_mem_ex();
+
+    free(b);
+    printf("  [INFO] after free(SMALL) — one free block should appear:\n");
+    show_alloc_mem_ex();
+
+    free(a);
+    free(c);
+    printf("  [INFO] all freed — should be empty:\n");
+    show_alloc_mem_ex();
+
+    ASSERT("show_alloc_mem_ex does not crash", 1);
+}
+
 /* ── summary ─────────────────────────────────────────────────────────────── */
 
 int main(void)
@@ -429,6 +623,10 @@ int main(void)
     test_stress_many_tiny();
     test_stress_interleaved();
     test_show_alloc_mem();
+    test_coalesce();
+    test_realloc_inplace_shrink();
+    test_realloc_inplace_grow();
+    test_show_alloc_mem_ex();
 
     printf("\n\r  ==========================================\n");
     printf("\r    Results: %d passed, %d failed\n", g_pass, g_fail);
