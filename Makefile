@@ -41,8 +41,8 @@ $(OBJS_DIR)/%.o: srcs/%.c | $(OBJS_DIR)
 	@COUNT=$$(ls $(OBJS_DIR)/*.o 2>/dev/null | wc -l | tr -d ' '); \
 	 FILLED=$$(($$COUNT * $(BAR_WIDTH) / $(TOTAL))); \
 	 EMPTY=$$(($(BAR_WIDTH) - $$FILLED)); \
-	 BAR=$$(printf '%*s' $$FILLED '' | tr ' ' '█'); \
-	 EMP=$$(printf '%*s' $$EMPTY '' | tr ' ' '░'); \
+	 BAR=$$(printf '%*s' $$FILLED '' | tr ' ' '@'); \
+	 EMP=$$(printf '%*s' $$EMPTY '' | tr ' ' '@'); \
 	 printf "\r  Building [$(GREEN)%s$(RESET)%s] %d/%d" "$$BAR" "$$EMP" "$$COUNT" "$(TOTAL)"
 
 $(OBJS_DIR):
